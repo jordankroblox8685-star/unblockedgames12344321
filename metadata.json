@@ -1,0 +1,6 @@
+{
+  "name": "PlayVault - Unblocked Games Hub",
+  "description": "Fast, unblocked games website loaded via iframes with classic arcade, puzzle, and retro games stored in JSON.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

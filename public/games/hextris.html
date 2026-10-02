@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Hextris Neo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #a855f7;
+      letter-spacing: 1px;
+    }
+    .stats {
+      font-size: 14px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .stats span { color: #a855f7; font-family: monospace; font-size: 16px; }
+    .canvas-wrap {
+      position: relative;
+      border: 3px solid #9333ea;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(147, 51, 234, 0.25);
+      background: #020617;
+    }
+    canvas { display: block; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(3, 7, 18, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .overlay.hidden { display: none; }
+    .btn {
+      background: #9333ea;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      font-size: 15px;
+      font-weight: 800;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #a855f7; }
+    .rot-controls {
+      display: flex;
+      gap: 16px;
+      margin-top: 10px;
+    }
+    .rot-btn {
+      width: 80px;
+      height: 44px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: white;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .rot-btn:active { background: #9333ea; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">HEXTRIS NEO</div>
+    <div class="stats">SCORE: <span id="score">0</span></div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="c" width="400" height="400"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="msg" style="color: #c084fc; font-size: 24px;">HEXTRIS NEO</h2>
+      <p style="color: #cbd5e1; font-size: 13px;">Left / Right Arrow to rotate hexagon</p>
+      <button class="btn" onclick="start()">PLAY</button>
+    </div>
+  </div>
+
+  <div class="rot-controls">
+    <button class="rot-btn" onclick="rotate(-1)">↺ Left</button>
+    <button class="rot-btn" onclick="rotate(1)">Right ↻</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const hexRadius = 45;
+
+    const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
+    let rotation = 0; // in 6ths
+    let blocks = []; // incoming falling bars
+    let stacks = [[], [], [], [], [], []]; // stack on each of the 6 sides
+    let score = 0;
+    let running = false;
+    let frame = 0;
+
+    function beep(freq, dur) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch(e){}
+    }
+
+    function rotate(dir) {
+      if (!running) return;
+      rotation = (rotation + dir + 6) % 6;
+      beep(420, 0.04);
+    }
+
+    function start() {
+      score = 0;
+      rotation = 0;
+      blocks = [];
+      stacks = [[], [], [], [], [], []];
+      document.getElementById('score').innerText = score;
+      document.getElementById('overlay').classList.add('hidden');
+      running = true;
+    }
+
+    function spawnBlock() {
+      const side = Math.floor(Math.random() * 6);
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      blocks.push({
+        side: side,
+        dist: 220,
+        color: color,
+        speed: 1.6 + Math.min(2, score / 400)
+      });
+    }
+
+    function update() {
+      if (!running) return;
+      frame++;
+
+      if (frame % Math.max(35, 70 - Math.floor(score / 50)) === 0) {
+        spawnBlock();
+      }
+
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        let b = blocks[i];
+        b.dist -= b.speed;
+
+        // landing side relative to current rotation
+        const landingSide = (b.side - rotation + 6) % 6;
+        const currentStackHeight = stacks[landingSide].length;
+        const targetDist = hexRadius + currentStackHeight * 12 + 6;
+
+        if (b.dist <= targetDist) {
+          // block lands!
+          stacks[landingSide].push(b.color);
+          blocks.splice(i, 1);
+          beep(300, 0.05);
+
+          // Check combos (3 of same color in a stack)
+          checkMatches(landingSide);
+
+          // Game over condition: stack too high
+          if (stacks[landingSide].length >= 8) {
+            running = false;
+            document.getElementById('msg').innerText = "GAME OVER";
+            document.getElementById('overlay').classList.remove('hidden');
+            beep(140, 0.3);
+            return;
+          }
+        }
+      }
+    }
+
+    function checkMatches(side) {
+      let st = stacks[side];
+      if (st.length >= 3) {
+        let last = st[st.length - 1];
+        if (st[st.length - 2] === last && st[st.length - 3] === last) {
+          st.splice(st.length - 3, 3);
+          score += 30;
+          document.getElementById('score').innerText = score;
+          beep(650, 0.15);
+        }
+      }
+    }
+
+    function drawHexagon(x, y, r, strokeOnly = false) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        let angle = (i * 60) * Math.PI / 180;
+        let px = x + r * Math.cos(angle);
+        let py = y + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      if (strokeOnly) ctx.stroke();
+      else ctx.fill();
+    }
+
+    function draw() {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Center Hexagon
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#9333ea';
+      ctx.lineWidth = 3;
+      drawHexagon(0, 0, hexRadius);
+      drawHexagon(0, 0, hexRadius, true);
+
+      // Draw Stacks on Hexagon Sides
+      for (let s = 0; s < 6; s++) {
+        let angleDeg = s * 60 + 30;
+        let angleRad = angleDeg * Math.PI / 180;
+
+        stacks[s].forEach((col, idx) => {
+          let dist = hexRadius + idx * 12 + 6;
+          let px = dist * Math.cos(angleRad);
+          let py = dist * Math.sin(angleRad);
+
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(angleRad + Math.PI / 2);
+          ctx.fillStyle = col;
+          ctx.fillRect(-20, -5, 40, 10);
+          ctx.restore();
+        });
+      }
+
+      ctx.restore();
+
+      // Draw incoming blocks
+      blocks.forEach(b => {
+        let sideAngle = ((b.side + rotation) % 6) * 60 + 30;
+        let rad = sideAngle * Math.PI / 180;
+        let px = cx + b.dist * Math.cos(rad);
+        let py = cy + b.dist * Math.sin(rad);
+
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(rad + Math.PI / 2);
+        ctx.fillStyle = b.color;
+        ctx.fillRect(-20, -5, 40, 10);
+        ctx.restore();
+      });
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') rotate(-1);
+      if (e.key === 'ArrowRight' || e.key === 'd') rotate(1);
+    });
+
+    loop();
+  </script>
+</body>
+</html>

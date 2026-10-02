@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Retro Pac Maze</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #facc15;
+      letter-spacing: 1px;
+    }
+    .stats {
+      font-size: 14px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .stats span { color: #facc15; font-family: monospace; font-size: 16px; }
+    .canvas-wrap {
+      position: relative;
+      border: 3px solid #3b82f6;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.25);
+      background: #020617;
+    }
+    canvas { display: block; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(3, 7, 18, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .overlay.hidden { display: none; }
+    .btn {
+      background: #facc15;
+      color: #020617;
+      border: none;
+      padding: 10px 24px;
+      font-size: 15px;
+      font-weight: 800;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #fde047; }
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 56px);
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .dp-btn {
+      width: 56px;
+      height: 42px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: white;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">PAC MAZE</div>
+    <div class="stats">SCORE: <span id="score">0</span> &nbsp; LIVES: <span id="lives">3</span></div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="c" width="380" height="380"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="msg" style="color: #facc15; font-size: 24px;">PAC MAZE</h2>
+      <p style="color: #cbd5e1; font-size: 13px;">Eat all dots! Avoid the ghosts!</p>
+      <button class="btn" onclick="start()">PLAY</button>
+    </div>
+  </div>
+
+  <div class="dpad">
+    <div></div>
+    <button class="dp-btn" onclick="setDir(0, -1)">▲</button>
+    <div></div>
+    <button class="dp-btn" onclick="setDir(-1, 0)">◀</button>
+    <button class="dp-btn" onclick="setDir(0, 1)">▼</button>
+    <button class="dp-btn" onclick="setDir(1, 0)">▶</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const cellSize = 20;
+    const gridCols = 19;
+    const gridRows = 19;
+
+    // 1: wall, 0: dot, 2: energizer, 3: empty
+    const rawMap = [
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      [1,2,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,1],
+      [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+      [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
+      [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+      [1,1,1,1,0,1,1,1,3,1,3,1,1,1,0,1,1,1,1],
+      [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
+      [1,1,1,1,0,1,3,1,1,3,1,1,3,1,0,1,1,1,1],
+      [3,3,3,1,0,1,3,1,3,3,3,1,3,1,0,1,3,3,3],
+      [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
+      [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+      [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+      [1,2,0,1,0,0,0,0,0,3,0,0,0,0,0,1,0,2,1],
+      [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
+      [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+      [1,0,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1],
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+
+    let map = [];
+    let pac = { x: 9, y: 14, dx: 0, dy: 0, nextDx: 0, nextDy: 0, angle: 0 };
+    let ghosts = [
+      { x: 9, y: 8, color: '#ef4444', dx: 1, dy: 0 },
+      { x: 9, y: 9, color: '#ec4899', dx: -1, dy: 0 },
+      { x: 8, y: 9, color: '#06b6d4', dx: 0, dy: 1 }
+    ];
+    let score = 0;
+    let lives = 3;
+    let frightTimer = 0;
+    let running = false;
+    let frame = 0;
+
+    function beep(freq, dur) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch(e){}
+    }
+
+    function initMap() {
+      map = JSON.parse(JSON.stringify(rawMap));
+    }
+
+    function resetPositions() {
+      pac.x = 9;
+      pac.y = 14;
+      pac.dx = 0;
+      pac.dy = 0;
+      pac.nextDx = 0;
+      pac.nextDy = 0;
+      ghosts[0].x = 9; ghosts[0].y = 8;
+      ghosts[1].x = 9; ghosts[1].y = 9;
+      ghosts[2].x = 8; ghosts[2].y = 9;
+    }
+
+    function start() {
+      initMap();
+      score = 0;
+      lives = 3;
+      frightTimer = 0;
+      resetPositions();
+      document.getElementById('score').innerText = score;
+      document.getElementById('lives').innerText = lives;
+      document.getElementById('overlay').classList.add('hidden');
+      running = true;
+    }
+
+    function setDir(dx, dy) {
+      pac.nextDx = dx;
+      pac.nextDy = dy;
+    }
+
+    function canMove(gx, gy) {
+      if (gx < 0 || gx >= gridCols) return true; // wrap tunnel
+      if (gy < 0 || gy >= gridRows) return false;
+      return map[gy][gx] !== 1;
+    }
+
+    function update() {
+      if (!running) return;
+      frame++;
+
+      if (frightTimer > 0) frightTimer--;
+
+      // Pacman moves every 9 frames
+      if (frame % 9 === 0) {
+        // test next direction
+        if (canMove(pac.x + pac.nextDx, pac.y + pac.nextDy)) {
+          pac.dx = pac.nextDx;
+          pac.dy = pac.nextDy;
+        }
+
+        if (canMove(pac.x + pac.dx, pac.y + pac.dy)) {
+          pac.x += pac.dx;
+          pac.y += pac.dy;
+
+          // tunnel wrapping
+          if (pac.x < 0) pac.x = gridCols - 1;
+          else if (pac.x >= gridCols) pac.x = 0;
+
+          // eat dots
+          if (map[pac.y][pac.x] === 0) {
+            map[pac.y][pac.x] = 3;
+            score += 10;
+            document.getElementById('score').innerText = score;
+            beep(440, 0.04);
+          } else if (map[pac.y][pac.x] === 2) {
+            map[pac.y][pac.x] = 3;
+            score += 50;
+            frightTimer = 50; // ghosts frightened
+            document.getElementById('score').innerText = score;
+            beep(700, 0.15);
+          }
+
+          // check dots win
+          let remainingDots = map.flat().filter(c => c === 0 || c === 2).length;
+          if (remainingDots === 0) {
+            running = false;
+            document.getElementById('msg').innerText = "MAZE CLEARED!";
+            document.getElementById('overlay').classList.remove('hidden');
+            return;
+          }
+        }
+      }
+
+      // Ghosts move every 12 frames
+      if (frame % 12 === 0) {
+        ghosts.forEach(g => {
+          let dirs = [
+            {dx: 0, dy: -1},
+            {dx: 0, dy: 1},
+            {dx: -1, dy: 0},
+            {dx: 1, dy: 0}
+          ].filter(d => canMove(g.x + d.dx, g.y + d.dy) && (d.dx !== -g.dx || d.dy !== -g.dy));
+
+          if (dirs.length > 0) {
+            let chosen = dirs[Math.floor(Math.random() * dirs.length)];
+            g.dx = chosen.dx;
+            g.dy = chosen.dy;
+            g.x += g.dx;
+            g.y += g.dy;
+          }
+        });
+      }
+
+      // Collision check
+      ghosts.forEach(g => {
+        if (Math.abs(g.x - pac.x) < 1 && Math.abs(g.y - pac.y) < 1) {
+          if (frightTimer > 0) {
+            // ghost eaten!
+            g.x = 9; g.y = 8;
+            score += 200;
+            document.getElementById('score').innerText = score;
+            beep(880, 0.15);
+          } else {
+            // pacman hit!
+            lives--;
+            document.getElementById('lives').innerText = lives;
+            beep(180, 0.3);
+            if (lives <= 0) {
+              running = false;
+              document.getElementById('msg').innerText = "GAME OVER";
+              document.getElementById('overlay').classList.remove('hidden');
+            } else {
+              resetPositions();
+            }
+          }
+        }
+      });
+    }
+
+    function draw() {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw maze walls & dots
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          let val = map[r][c];
+          let px = c * cellSize;
+          let py = r * cellSize;
+
+          if (val === 1) {
+            ctx.fillStyle = '#1e3a8a';
+            ctx.fillRect(px, py, cellSize, cellSize);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px, py, cellSize, cellSize);
+          } else if (val === 0) {
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(px + cellSize/2, py + cellSize/2, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (val === 2) {
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(px + cellSize/2, py + cellSize/2, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Draw Pacman
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      let mouth = (frame % 16 < 8) ? 0.25 : 0.05;
+      let pAngle = pac.dx === 1 ? 0 : (pac.dy === 1 ? 0.5 : (pac.dx === -1 ? 1 : 1.5));
+      ctx.arc(
+        pac.x * cellSize + cellSize / 2,
+        pac.y * cellSize + cellSize / 2,
+        8,
+        (pAngle + mouth) * Math.PI,
+        (pAngle + 2 - mouth) * Math.PI
+      );
+      ctx.lineTo(pac.x * cellSize + cellSize / 2, pac.y * cellSize + cellSize / 2);
+      ctx.fill();
+
+      // Draw Ghosts
+      ghosts.forEach(g => {
+        ctx.fillStyle = frightTimer > 0 ? '#38bdf8' : g.color;
+        let gx = g.x * cellSize + cellSize / 2;
+        let gy = g.y * cellSize + cellSize / 2;
+
+        ctx.beginPath();
+        ctx.arc(gx, gy - 2, 7, Math.PI, 0, false);
+        ctx.lineTo(gx + 7, gy + 7);
+        ctx.lineTo(gx - 7, gy + 7);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(gx - 3, gy - 2, 2.5, 0, Math.PI * 2);
+        ctx.arc(gx + 3, gy - 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(gx - 2.5, gy - 2, 1.2, 0, Math.PI * 2);
+        ctx.arc(gx + 3.5, gy - 2, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', e => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
+        e.preventDefault();
+      }
+      if (e.key === 'ArrowUp' || e.key === 'w') setDir(0, -1);
+      if (e.key === 'ArrowDown' || e.key === 's') setDir(0, 1);
+      if (e.key === 'ArrowLeft' || e.key === 'a') setDir(-1, 0);
+      if (e.key === 'ArrowRight' || e.key === 'd') setDir(1, 0);
+    });
+
+    initMap();
+    loop();
+  </script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Connect 4 Strategy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #3b82f6;
+    }
+    .status-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .board-container {
+      background: #1e3a8a;
+      padding: 12px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(30, 58, 138, 0.4);
+      border: 3px solid #3b82f6;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(7, 44px);
+      grid-gap: 8px;
+    }
+    .slot {
+      width: 44px;
+      height: 44px;
+      background: #090d16;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease;
+      box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6);
+    }
+    .slot:hover {
+      box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6), 0 0 8px rgba(255, 255, 255, 0.2);
+    }
+    .slot.red {
+      background: #ef4444;
+      box-shadow: inset 0 -3px 4px rgba(0, 0, 0, 0.3), 0 0 10px #ef4444;
+    }
+    .slot.yellow {
+      background: #facc15;
+      box-shadow: inset 0 -3px 4px rgba(0, 0, 0, 0.3), 0 0 10px #facc15;
+    }
+    .controls {
+      margin-top: 14px;
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">CONNECT 4</div>
+    <div class="status-text" id="status">
+      <span class="status-indicator" id="indicator" style="background:#ef4444;"></span>
+      <span id="turn-text">Your Turn (Red)</span>
+    </div>
+  </div>
+
+  <div class="board-container">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" onclick="initGame()">New Game</button>
+  </div>
+
+  <script>
+    const ROWS = 6;
+    const COLS = 7;
+    let grid = [];
+    let currentPlayer = 1; // 1 = Red (player), 2 = Yellow (AI)
+    let gameOver = false;
+
+    function beep(freq, dur) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch(e){}
+    }
+
+    function initGame() {
+      grid = Array(ROWS).fill(0).map(() => Array(COLS).fill(0));
+      currentPlayer = 1;
+      gameOver = false;
+      updateStatus();
+      render();
+    }
+
+    function updateStatus(winner = 0) {
+      const turnText = document.getElementById('turn-text');
+      const ind = document.getElementById('indicator');
+      if (winner === 1) {
+        ind.style.background = '#ef4444';
+        turnText.innerText = "You Win!";
+        beep(600, 0.3);
+      } else if (winner === 2) {
+        ind.style.background = '#facc15';
+        turnText.innerText = "CPU Wins!";
+        beep(200, 0.3);
+      } else if (winner === 3) {
+        ind.style.background = '#94a3b8';
+        turnText.innerText = "Draw Game!";
+      } else {
+        if (currentPlayer === 1) {
+          ind.style.background = '#ef4444';
+          turnText.innerText = "Your Turn (Red)";
+        } else {
+          ind.style.background = '#facc15';
+          turnText.innerText = "CPU Thinking...";
+        }
+      }
+    }
+
+    function render() {
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = '';
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const slot = document.createElement('div');
+          slot.className = 'slot';
+          if (grid[r][c] === 1) slot.classList.add('red');
+          if (grid[r][c] === 2) slot.classList.add('yellow');
+          slot.onclick = () => handleColClick(c);
+          boardEl.appendChild(slot);
+        }
+      }
+    }
+
+    function handleColClick(col) {
+      if (gameOver || currentPlayer !== 1) return;
+      if (dropPiece(col, 1)) {
+        beep(480, 0.08);
+        render();
+        if (checkWin(1)) {
+          gameOver = true;
+          updateStatus(1);
+          return;
+        }
+        if (checkFull()) {
+          gameOver = true;
+          updateStatus(3);
+          return;
+        }
+        currentPlayer = 2;
+        updateStatus();
+        setTimeout(aiMove, 400);
+      }
+    }
+
+    function dropPiece(col, player) {
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (grid[r][col] === 0) {
+          grid[r][col] = player;
+          return true;
+        }
+      }
+      return false; // col full
+    }
+
+    function aiMove() {
+      if (gameOver) return;
+
+      // 1. check if AI can win immediately
+      for (let c = 0; c < COLS; c++) {
+        let r = getLowestRow(c);
+        if (r !== -1) {
+          grid[r][c] = 2;
+          if (checkWin(2)) {
+            grid[r][c] = 0;
+            dropPiece(c, 2);
+            beep(360, 0.08);
+            render();
+            gameOver = true;
+            updateStatus(2);
+            return;
+          }
+          grid[r][c] = 0;
+        }
+      }
+
+      // 2. check if player can win next move, block it!
+      for (let c = 0; c < COLS; c++) {
+        let r = getLowestRow(c);
+        if (r !== -1) {
+          grid[r][c] = 1;
+          if (checkWin(1)) {
+            grid[r][c] = 0;
+            dropPiece(c, 2);
+            beep(360, 0.08);
+            render();
+            currentPlayer = 1;
+            updateStatus();
+            return;
+          }
+          grid[r][c] = 0;
+        }
+      }
+
+      // 3. pick center or smart column
+      const preference = [3, 2, 4, 1, 5, 0, 6];
+      for (let c of preference) {
+        if (getLowestRow(c) !== -1) {
+          dropPiece(c, 2);
+          beep(360, 0.08);
+          render();
+          break;
+        }
+      }
+
+      if (checkWin(2)) {
+        gameOver = true;
+        updateStatus(2);
+        return;
+      }
+      if (checkFull()) {
+        gameOver = true;
+        updateStatus(3);
+        return;
+      }
+
+      currentPlayer = 1;
+      updateStatus();
+    }
+
+    function getLowestRow(col) {
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (grid[r][col] === 0) return r;
+      }
+      return -1;
+    }
+
+    function checkFull() {
+      return grid[0].every(cell => cell !== 0);
+    }
+
+    function checkWin(player) {
+      // Horizontal
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r][c+1] === player && grid[r][c+2] === player && grid[r][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      // Vertical
+      for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < ROWS - 3; r++) {
+          if (grid[r][c] === player && grid[r+1][c] === player && grid[r+2][c] === player && grid[r+3][c] === player) {
+            return true;
+          }
+        }
+      }
+      // Diagonal up-right
+      for (let r = 3; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r-1][c+1] === player && grid[r-2][c+2] === player && grid[r-3][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      // Diagonal down-right
+      for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r+1][c+1] === player && grid[r+2][c+2] === player && grid[r+3][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    initGame();
+  </script>
+</body>
+</html>

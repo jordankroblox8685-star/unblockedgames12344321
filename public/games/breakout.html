@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Breakout DX</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .header {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ec4899;
+      letter-spacing: 1px;
+    }
+    .stats {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .stats span { color: #f43f5e; font-family: monospace; font-size: 16px; }
+    .canvas-wrap {
+      position: relative;
+      border: 3px solid #ec4899;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(236, 72, 153, 0.25);
+      background: #020617;
+    }
+    canvas { display: block; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(3, 7, 18, 0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .overlay.hidden { display: none; }
+    .btn {
+      background: #ec4899;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      font-size: 15px;
+      font-weight: 800;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #db2777; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">BREAKOUT DX</div>
+    <div class="stats">
+      <div>SCORE: <span id="score">0</span></div>
+      <div>LIVES: <span id="lives">3</span></div>
+    </div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="c" width="440" height="420"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="msg" style="color: #f472b6; font-size: 24px;">BREAKOUT DX</h2>
+      <p style="color: #cbd5e1; font-size: 13px;">Move paddle with Mouse or Arrow Keys</p>
+      <button class="btn" onclick="start()">PLAY</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    const paddleW = 75, paddleH = 10;
+    let paddleX = (canvas.width - paddleW) / 2;
+
+    let ballX = canvas.width / 2;
+    let ballY = canvas.height - 30;
+    let ballSpeedX = 3.5;
+    let ballSpeedY = -3.5;
+    let ballR = 5;
+
+    let score = 0;
+    let lives = 3;
+    let running = false;
+
+    const rowCount = 5;
+    const colCount = 8;
+    const brickW = 46;
+    const brickH = 14;
+    const brickPadding = 6;
+    const brickOffsetTop = 35;
+    const brickOffsetLeft = 15;
+
+    const brickColors = ['#f43f5e', '#fb923c', '#facc15', '#4ade80', '#38bdf8'];
+    let bricks = [];
+
+    function beep(freq, dur) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch(e){}
+    }
+
+    function initBricks() {
+      bricks = [];
+      for (let c = 0; c < colCount; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < rowCount; r++) {
+          bricks[c][r] = { x: 0, y: 0, status: 1, color: brickColors[r] };
+        }
+      }
+    }
+
+    function resetBall() {
+      ballX = canvas.width / 2;
+      ballY = canvas.height - 40;
+      ballSpeedX = (Math.random() > 0.5 ? 1 : -1) * 3.5;
+      ballSpeedY = -3.5;
+      paddleX = (canvas.width - paddleW) / 2;
+    }
+
+    function start() {
+      score = 0;
+      lives = 3;
+      document.getElementById('score').innerText = score;
+      document.getElementById('lives').innerText = lives;
+      initBricks();
+      resetBall();
+      running = true;
+      document.getElementById('overlay').classList.add('hidden');
+    }
+
+    function collisionDetection() {
+      let activeCount = 0;
+      for (let c = 0; c < colCount; c++) {
+        for (let r = 0; r < rowCount; r++) {
+          let b = bricks[c][r];
+          if (b.status === 1) {
+            activeCount++;
+            if (ballX > b.x && ballX < b.x + brickW && ballY > b.y && ballY < b.y + brickH) {
+              ballSpeedY = -ballSpeedY;
+              b.status = 0;
+              score += 15 * (rowCount - r);
+              document.getElementById('score').innerText = score;
+              beep(500 + r * 60, 0.08);
+            }
+          }
+        }
+      }
+      if (activeCount === 0) {
+        running = false;
+        document.getElementById('msg').innerText = "STAGE CLEARED!";
+        document.getElementById('overlay').classList.remove('hidden');
+      }
+    }
+
+    function update() {
+      if (!running) return;
+
+      ballX += ballSpeedX;
+      ballY += ballSpeedY;
+
+      // left & right walls
+      if (ballX + ballR > canvas.width || ballX - ballR < 0) {
+        ballSpeedX = -ballSpeedX;
+        beep(300, 0.05);
+      }
+
+      // top wall
+      if (ballY - ballR < 0) {
+        ballSpeedY = -ballSpeedY;
+        beep(300, 0.05);
+      }
+
+      // paddle collision
+      if (ballY + ballR >= canvas.height - 20 && ballY - ballR <= canvas.height - 10) {
+        if (ballX >= paddleX - 5 && ballX <= paddleX + paddleW + 5) {
+          ballSpeedY = -Math.abs(ballSpeedY);
+          let delta = ballX - (paddleX + paddleW / 2);
+          ballSpeedX = delta * 0.15;
+          beep(600, 0.08);
+        }
+      }
+
+      // bottom miss
+      if (ballY - ballR > canvas.height) {
+        lives--;
+        document.getElementById('lives').innerText = lives;
+        beep(180, 0.2);
+        if (lives <= 0) {
+          running = false;
+          document.getElementById('msg').innerText = "GAME OVER";
+          document.getElementById('overlay').classList.remove('hidden');
+        } else {
+          resetBall();
+        }
+      }
+
+      collisionDetection();
+    }
+
+    function draw() {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // bricks
+      for (let c = 0; c < colCount; c++) {
+        for (let r = 0; r < rowCount; r++) {
+          if (bricks[c] && bricks[c][r].status === 1) {
+            let bx = c * (brickW + brickPadding) + brickOffsetLeft;
+            let by = r * (brickH + brickPadding) + brickOffsetTop;
+            bricks[c][r].x = bx;
+            bricks[c][r].y = by;
+
+            ctx.fillStyle = bricks[c][r].color;
+            ctx.shadowColor = bricks[c][r].color;
+            ctx.shadowBlur = 6;
+            ctx.fillRect(bx, by, brickW, brickH);
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+
+      // paddle
+      ctx.fillStyle = '#ec4899';
+      ctx.shadowColor = '#ec4899';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(paddleX, canvas.height - 20, paddleW, paddleH);
+      ctx.shadowBlur = 0;
+
+      // ball
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      paddleX = e.clientX - rect.left - paddleW / 2;
+      paddleX = Math.max(0, Math.min(canvas.width - paddleW, paddleX));
+    });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      paddleX = e.touches[0].clientX - rect.left - paddleW / 2;
+      paddleX = Math.max(0, Math.min(canvas.width - paddleW, paddleX));
+    }, {passive: false});
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') paddleX = Math.max(0, paddleX - 30);
+      if (e.key === 'ArrowRight' || e.key === 'd') paddleX = Math.min(canvas.width - paddleW, paddleX + 30);
+    });
+
+    initBricks();
+    loop();
+  </script>
+</body>
+</html>
